@@ -43,7 +43,58 @@ struct DFA {
 
 #endif
 
-DFA determinize(const MISNFA& nfa);
+
+DFA determinize(const MISNFA& nfa){ 
+    DFA dfa;
+    
+    std::map<std::set<State>, State> graph;
+    std::queue<std::set<State>> q;
+
+    graph[nfa.m_InitialStates] = 0;
+    q.push(nfa.m_InitialStates);
+    
+    dfa.m_InitialState = 0;
+    dfa.m_Alphabet = nfa.m_Alphabet;
+
+    if (nfa.m_Alphabet.size() == 0) {
+        dfa.m_FinalStates.insert(0);
+        return dfa;
+    }
+    while (!q.empty()){
+        std::set<State> c = q.front();
+        q.pop();
+
+        for (const auto& symbol : nfa.m_Alphabet){
+            std::set<State> new_state;
+            
+            for (const auto& state : c) //if there are reachable transitions then add it to new state
+                if (nfa.m_Transitions.count({state, symbol}) > 0) 
+                    new_state.insert(nfa.m_Transitions.at({state, symbol}).begin(), nfa.m_Transitions.at({state, symbol}).end());
+                
+            
+            if (!new_state.empty()){ 
+                if (graph.count(new_state) == 0){ //add new state to graph
+                    graph[new_state] = graph.size();
+                    q.push(new_state);
+                }
+                dfa.m_Transitions[{graph[c], symbol}] = graph[new_state]; //add transition
+            }   
+
+            for (const auto& state : c)
+                if (nfa.m_FinalStates.count(state) > 0){ //if final in nfa then in dfa as well
+                    dfa.m_FinalStates.insert(graph[c]);
+                    break;
+                }
+        }
+    }
+
+    for (const auto& [_,x] : graph) 
+        dfa.m_States.insert(x);
+
+    return dfa;
+}
+
+
 
 #ifndef __PROGTEST__
 MISNFA in0 = {
