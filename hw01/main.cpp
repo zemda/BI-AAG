@@ -46,7 +46,6 @@ struct DFA {
 
 DFA determinize(const MISNFA& nfa){
     DFA dfa;
-
     std::map<std::set<State>, State> graph;
     std::queue<std::set<State>> q;
 
@@ -63,7 +62,7 @@ DFA determinize(const MISNFA& nfa){
         for (const auto& symbol : nfa.m_Alphabet){
             std::set<State> new_state;
 
-            for (const auto& state : c) //if there are reachable transitions then add it to new state
+            for (const auto& state : c) //if there are transition from this state and symbol then add to which states
                 if (nfa.m_Transitions.count({state, symbol}) > 0)
                     new_state.insert(nfa.m_Transitions.at({state, symbol}).begin(), nfa.m_Transitions.at({state, symbol}).end());
 
@@ -86,9 +85,7 @@ DFA determinize(const MISNFA& nfa){
     }
 
     std::set<State> usefulStates;
-    queue<State> q2;
-
-    for (const auto& fs : dfa.m_FinalStates){
+    for (const auto& fs : dfa.m_FinalStates){ //removing useless states from which we dont have transitions to the final states
         std::stack<State> s;
         s.push(fs);
 
@@ -105,13 +102,23 @@ DFA determinize(const MISNFA& nfa){
                     s.push(trans.first.first);
         }
     }
+    dfa.m_States = usefulStates;
+
+    if (dfa.m_FinalStates.empty() || dfa.m_States.empty()){ //when dfa accepts only empty language, we need to return one state dfa
+        dfa.m_States.clear();
+        dfa.m_FinalStates.clear();
+        dfa.m_Transitions.clear();
+        dfa.m_States.insert(dfa.m_InitialState);
+        for (const auto& symbol : nfa.m_Alphabet)
+            dfa.m_Transitions[{dfa.m_InitialState, symbol}] = dfa.m_InitialState;
+        return dfa;
+    }
 
     std::map<std::pair<State, Symbol>, State> newTransitions;
-    for (const auto &trans : dfa.m_Transitions)
+    for (const auto &trans : dfa.m_Transitions) //removing useless transitions (if given transitions leads from one useful state to another)
         if (usefulStates.count(trans.first.first) > 0 && usefulStates.count(trans.second) > 0)
             newTransitions[trans.first] = trans.second;
 
-    dfa.m_States = usefulStates;
     dfa.m_Transitions = newTransitions;
 
     return dfa;
