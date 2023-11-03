@@ -44,22 +44,17 @@ struct DFA {
 #endif
 
 
-DFA determinize(const MISNFA& nfa){ 
+DFA determinize(const MISNFA& nfa){
     DFA dfa;
-    
+
     std::map<std::set<State>, State> graph;
     std::queue<std::set<State>> q;
 
     graph[nfa.m_InitialStates] = 0;
     q.push(nfa.m_InitialStates);
-    
+
     dfa.m_InitialState = 0;
     dfa.m_Alphabet = nfa.m_Alphabet;
-
-    if (nfa.m_Alphabet.size() == 0){
-        dfa.m_FinalStates.insert(0);
-        return dfa;
-    }
 
     while (!q.empty()){
         auto c = q.front();
@@ -67,12 +62,12 @@ DFA determinize(const MISNFA& nfa){
 
         for (const auto& symbol : nfa.m_Alphabet){
             std::set<State> new_state;
-            
+
             for (const auto& state : c) //if there are reachable transitions then add it to new state
-                if (nfa.m_Transitions.count({state, symbol}) > 0) 
+                if (nfa.m_Transitions.count({state, symbol}) > 0)
                     new_state.insert(nfa.m_Transitions.at({state, symbol}).begin(), nfa.m_Transitions.at({state, symbol}).end());
-                
-            if (!new_state.empty()){ 
+
+            if (!new_state.empty()){
                 if (graph.count(new_state) == 0){ //add new state to graph
                     int currentSize = graph.size();
                     graph[new_state] = currentSize;
@@ -80,7 +75,7 @@ DFA determinize(const MISNFA& nfa){
                     q.push(new_state);
                 }
                 dfa.m_Transitions[{graph[c], symbol}] = graph[new_state]; //add transition
-            }   
+            }
 
             for (const auto& state : c)
                 if (nfa.m_FinalStates.count(state) > 0){ //if final in nfa then in dfa as well
@@ -91,23 +86,24 @@ DFA determinize(const MISNFA& nfa){
     }
 
     std::set<State> usefulStates;
-    usefulStates.insert(dfa.m_InitialState);
     queue<State> q2;
 
-    for (const auto& x : dfa.m_FinalStates){
-        q2.push(x);
-        usefulStates.insert(x);
-    }
+    for (const auto& fs : dfa.m_FinalStates){
+        std::stack<State> s;
+        s.push(fs);
 
-    while (!q2.empty()){
-        auto c = q2.front();
-        q2.pop();
+        while (!s.empty()){
+            auto c = s.top();
+            s.pop();
 
-        for (const auto &trans : dfa.m_Transitions)
-            if (trans.second == c && usefulStates.count(trans.first.first) == 0){
-                q2.push(trans.first.first);
-                usefulStates.insert(trans.first.first);
-            }
+            if (usefulStates.count(c) > 0)
+                continue;
+
+            usefulStates.insert(c);
+            for (const auto& trans : dfa.m_Transitions)
+                if (trans.second == c)
+                    s.push(trans.first.first);
+        }
     }
 
     std::map<std::pair<State, Symbol>, State> newTransitions;
@@ -120,8 +116,6 @@ DFA determinize(const MISNFA& nfa){
 
     return dfa;
 }
-
-
 
 #ifndef __PROGTEST__
 MISNFA in0 = {
