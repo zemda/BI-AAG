@@ -56,12 +56,13 @@ DFA determinize(const MISNFA& nfa){
     dfa.m_InitialState = 0;
     dfa.m_Alphabet = nfa.m_Alphabet;
 
-    if (nfa.m_Alphabet.size() == 0) {
+    if (nfa.m_Alphabet.size() == 0){
         dfa.m_FinalStates.insert(0);
         return dfa;
     }
+
     while (!q.empty()){
-        std::set<State> c = q.front();
+        auto c = q.front();
         q.pop();
 
         for (const auto& symbol : nfa.m_Alphabet){
@@ -71,10 +72,11 @@ DFA determinize(const MISNFA& nfa){
                 if (nfa.m_Transitions.count({state, symbol}) > 0) 
                     new_state.insert(nfa.m_Transitions.at({state, symbol}).begin(), nfa.m_Transitions.at({state, symbol}).end());
                 
-            
             if (!new_state.empty()){ 
                 if (graph.count(new_state) == 0){ //add new state to graph
-                    graph[new_state] = graph.size();
+                    int currentSize = graph.size();
+                    graph[new_state] = currentSize;
+                    dfa.m_States.insert(currentSize);
                     q.push(new_state);
                 }
                 dfa.m_Transitions[{graph[c], symbol}] = graph[new_state]; //add transition
@@ -88,8 +90,33 @@ DFA determinize(const MISNFA& nfa){
         }
     }
 
-    for (const auto& [_,x] : graph) 
-        dfa.m_States.insert(x);
+    std::set<State> usefulStates;
+    usefulStates.insert(dfa.m_InitialState);
+    queue<State> q2;
+
+    for (const auto& x : dfa.m_FinalStates){
+        q2.push(x);
+        usefulStates.insert(x);
+    }
+
+    while (!q2.empty()){
+        auto c = q2.front();
+        q2.pop();
+
+        for (const auto &trans : dfa.m_Transitions)
+            if (trans.second == c && usefulStates.count(trans.first.first) == 0){
+                q2.push(trans.first.first);
+                usefulStates.insert(trans.first.first);
+            }
+    }
+
+    std::map<std::pair<State, Symbol>, State> newTransitions;
+    for (const auto &trans : dfa.m_Transitions)
+        if (usefulStates.count(trans.first.first) > 0 && usefulStates.count(trans.second) > 0)
+            newTransitions[trans.first] = trans.second;
+
+    dfa.m_States = usefulStates;
+    dfa.m_Transitions = newTransitions;
 
     return dfa;
 }
