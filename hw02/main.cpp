@@ -30,7 +30,18 @@ struct Grammar {
     Symbol m_InitialSymbol;
 };
 
-
+/**
+ * @brief Reconstructs the word from a given sequence of rule indices.
+ * 
+ * The function creates a lambda function that applies a rule from the grammar.
+ * If the rule derives a terminal symbol, the function adds this symbol to the word.
+ * If the rule derives a nonterminal symbol, the function recursively calls itself with the next rule in the sequence.
+ * After defining the lambda function, the function iterates over the sequence of rule indices and applies each rule using the lambda function.
+ * 
+ * @param grammar The context-free grammar used for parsing.
+ * @param trace A sequence of indices of rules in the grammar that can derive the word.
+ * @return The word derived from the sequence of rule indices.
+ */
 Word reconstructWord(const Grammar& grammar, std::vector<size_t> trace) {
     Word word;
     std::function<void(size_t)> applyRule = [&](size_t ruleIndex) mutable {
@@ -44,7 +55,6 @@ Word reconstructWord(const Grammar& grammar, std::vector<size_t> trace) {
                     trace.erase(trace.begin());
                     applyRule(nextRuleIndex);
                 }
-            
         }
     };
     while (!trace.empty()) {
@@ -60,35 +70,76 @@ std::vector<size_t> trace(const Grammar& grammar, const Word& word) {
         for (size_t i = 0; i < grammar.m_Rules.size(); ++i) 
             if (grammar.m_Rules[i].first == grammar.m_InitialSymbol && grammar.m_Rules[i].second.empty())
                 return {i};
-            
         return {};
     }
+    
     size_t n = word.size();
-    std::map<Symbol, std::vector<std::vector<int>>> table;
+    
+    /**
+     * @brief Key is nonTerminal, value is 2D vector of size n x n, 
+     * where each cell contains index of rule that generated substring
+     */
+    std::map<Symbol, std::vector<std::vector<int>>> table; 
 
+    /**
+     * @brief Initialize table with -1, which means that substring cannot be generated
+     */
     for (const auto& nonTerminal : grammar.m_Nonterminals)
         table[nonTerminal] = std::vector<std::vector<int>>(n, std::vector<int>(n, -1));
     
-
-    for (size_t charIndex = 0; charIndex < n; ++charIndex) //for each char in word
-        for (size_t ruleIndex = 0; ruleIndex < grammar.m_Rules.size(); ++ruleIndex){ // for each rule
-            auto& rule = grammar.m_Rules[ruleIndex];
-            if (rule.second.size() == 1 && rule.second[0] == word[charIndex]) // if rule is terminal and if matches curr char
-                table[rule.first][charIndex][charIndex] = ruleIndex;
+    /**
+     * @brief Iterates over each character in the word and each rule in the grammar 
+     * and  fills in the diagonal of the table
+     * 
+     *  If a rule is a terminal rule (i.e., it derives a single terminal symbol) and the terminal symbol 
+     *  matches the current character in the word, the function stores the index of this rule in the table 
+     *  for the nonterminal symbol of the rule and the substring of the word consisting of the current character.
+     * 
+     */
+    for (size_t charIndex = 0; charIndex < n; ++charIndex)
+        for (size_t ruleIndex = 0; ruleIndex < grammar.m_Rules.size(); ++ruleIndex){
+            auto& [nonTerminal, ruleRightSide] = grammar.m_Rules[ruleIndex];
+            if (ruleRightSide.size() == 1 && ruleRightSide[0] == word[charIndex])
+                table[nonTerminal][charIndex][charIndex] = ruleIndex;
         }
 
-    for (size_t len = 2; len <= n; ++len) // for each length of substring
-        for (size_t startPos = 0; startPos <= n - len; ++startPos) // for each possible starting pos of substring
-            for (size_t splitPos = startPos; splitPos < startPos + len - 1; ++splitPos) // for each possible split position within substring
-                for (size_t ruleIndex = 0; ruleIndex < grammar.m_Rules.size(); ++ruleIndex){ // for each rule
-                    auto& rule = grammar.m_Rules[ruleIndex];
-                    if (rule.second.size() == 2 && 
-                        table[rule.second[0]][startPos][splitPos] != -1 && 
-                        table[rule.second[1]][splitPos + 1][startPos + len - 1] != -1) //if rule iss nonTerminal and generates substring
-                            table[rule.first][startPos][startPos + len - 1] = ruleIndex;
+    /**
+     * @brief Fills in the table for all substrings of length 2 or more.
+     * 
+     * The function iterates over all possible lengths of substrings, starting positions, split positions, and rules.
+     * If a rule is a nonterminal rule (i.e., it derives two nonterminal symbols) and the rule 
+     * can be used to derive the current substring (the two parts), the function saves the index of this 
+     * rule in the table for the nonterminal symbol of the rule and the current substring.
+     * 
+     * @param len The length of the current substring.
+     * @param startPos The starting position of the current substring in the word.
+     * @param splitPos The position where the current substring is split into two parts.
+     * @param ruleIndex The index of the current rule in the list of grammar rules.
+     */
+    for (size_t len = 2; len <= n; ++len)
+        for (size_t startPos = 0; startPos <= n - len; ++startPos)
+            for (size_t splitPos = startPos; splitPos < startPos + len - 1; ++splitPos)
+                for (size_t ruleIndex = 0; ruleIndex < grammar.m_Rules.size(); ++ruleIndex){
+                    auto& [nonTerminal, ruleRightSide] = grammar.m_Rules[ruleIndex];
+                    if (ruleRightSide.size() == 2 &&
+                        table[ruleRightSide[0]][startPos][splitPos] != -1 && 
+                        table[ruleRightSide[1]][splitPos + 1][startPos + len - 1] != -1)
+                            table[nonTerminal][startPos][startPos + len - 1] = ruleIndex;
                     
                 }       
-            
+    /**
+     * @brief Backtracks through the table to find a sequence of rule indices that can derive the word.
+     * 
+     * The function first checks if the initial symbol can derive the entire word. If it can, the function creates a lambda function for backtracking.
+     * The lambda function takes a nonterminal symbol and the start and end indices of a substring of the word as parameters.
+     * If the start and end indices are the same, the function adds the index of the rule used to derive the terminal symbol at this position to the result vector.
+     * If the start and end indices are different, the function iterates over all possible split positions within the substring.
+     * If it finds a split position where the two parts of the substring can be derived by two nonterminal symbols according to a rule in the grammar,
+     * the function adds the index of this rule to the result vector and recursively calls itself for the two parts of the substring.
+     * After defining the lambda function, the function calls it for the initial symbol and the entire word.
+     * 
+     * @return A vector of indices of rules in the grammar that can derive the word in the order they are applied
+     */
     std::vector<size_t> result;
     if (table[grammar.m_InitialSymbol][0][n - 1] != -1){ // if initial symbol generates whole word
         std::function<void(Symbol, size_t, size_t)> backtrack = [&](Symbol current, size_t i, size_t j) {
